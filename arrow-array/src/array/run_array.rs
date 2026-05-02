@@ -51,7 +51,7 @@ macro_rules! ree_map {
 
 /// An array of [run-end encoded values].
 ///
-/// This encoding is variation on [run-length encoding (RLE)] and is good for representing
+/// This encoding is a variation on [run-length encoding (RLE)] and is good for representing
 /// data containing the same values repeated consecutively.
 ///
 /// A [`RunArray`] consists of a `run_ends` buffer and a `values` array of equivalent
