@@ -986,6 +986,14 @@ pub trait AsArray: private::Sealed {
     fn as_any_dictionary(&self) -> &dyn AnyDictionaryArray {
         self.as_any_dictionary_opt().expect("any dictionary array")
     }
+
+    /// Downcasts this to a [`AnyRunArray`] returning `None` if not possible
+    fn as_any_run_opt(&self) -> Option<&dyn AnyRunArray>;
+
+    /// Downcasts this to a [`AnyRunArray`] panicking if not possible
+    fn as_any_run(&self) -> &dyn AnyRunArray {
+        self.as_any_run_opt().expect("any run array")
+    }
 }
 
 impl private::Sealed for dyn Array + '_ {}
@@ -1049,6 +1057,14 @@ impl AsArray for dyn Array + '_ {
             _ => None
         }
     }
+
+    fn as_any_run_opt(&self) -> Option<&dyn AnyRunArray> {
+        let array = self;
+        downcast_run_array! {
+            array => Some(array),
+            _ => None
+        }
+    }
 }
 
 impl private::Sealed for ArrayRef {}
@@ -1105,6 +1121,10 @@ impl AsArray for ArrayRef {
         self.as_ref().as_any_dictionary_opt()
     }
 
+    fn as_any_run_opt(&self) -> Option<&dyn AnyRunArray> {
+        self.as_ref().as_any_run_opt()
+    }
+
     fn as_run_opt<K: RunEndIndexType>(&self) -> Option<&RunArray<K>> {
         self.as_ref().as_run_opt()
     }
@@ -1139,6 +1159,34 @@ mod tests {
         // should also work when wrapped in an Arc
         let array: ArrayRef = Arc::new(array);
         assert!(!as_string_array(&array).is_empty())
+    }
+
+    #[test]
+    fn test_as_any_run_array_ref() {
+        let array: RunArray<Int32Type> = [Some("a"), Some("a"), Some("b")].into_iter().collect();
+        let array_ref = &array as &dyn Array;
+        assert!(array_ref.as_any_run_opt().is_some());
+        assert!(array_ref.as_any_dictionary_opt().is_none());
+
+        let array: ArrayRef = Arc::new(array);
+        let any_run = array.as_any_run();
+
+        let run_ends = any_run.run_ends();
+        assert_eq!(run_ends.as_primitive::<Int32Type>().values(), &[2, 3]);
+        assert_eq!(any_run.values().as_string::<i32>().value(0), "a");
+
+        let sliced = array.slice(1, 2);
+        let any_sliced = sliced.as_any_run();
+        let sliced_run_ends = any_sliced.sliced_run_ends();
+        assert_eq!(
+            sliced_run_ends.as_primitive::<Int32Type>().values(),
+            &[1, 2]
+        );
+
+        let values: ArrayRef = Arc::new(StringArray::from(vec!["c", "d"]));
+        let new_array = any_run.with_values(values);
+        let new_run = new_array.as_run::<Int32Type>();
+        assert_eq!(new_run.values().as_string::<i32>().value(0), "c");
     }
 
     #[test]

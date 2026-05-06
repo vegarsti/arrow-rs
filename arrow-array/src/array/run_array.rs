@@ -619,6 +619,94 @@ pub type Int32RunArray = RunArray<Int32Type>;
 /// ```
 pub type Int64RunArray = RunArray<Int64Type>;
 
+/// A [`RunArray`] with the run-end index type erased
+///
+/// This can be used to efficiently implement kernels for all possible run-end
+/// index types without needing to create specialized implementations for each
+/// run-end index type.
+///
+/// See [`crate::cast::AsArray::as_any_run_opt`] and [`crate::cast::AsArray::as_any_run`]
+pub trait AnyRunArray: Array {
+    /// Returns the physical run ends of this run array as a [`PrimitiveArray`] with
+    /// the concrete run-end index type erased.
+    ///
+    /// Any logical slicing of this [`RunArray`] is not applied to the returned
+    /// run ends. Use [`Self::sliced_run_ends`] to account for slicing.
+    fn run_ends(&self) -> ArrayRef;
+
+    /// Returns the run ends adjusted for the logical slice of this array.
+    fn sliced_run_ends(&self) -> ArrayRef;
+
+    /// Returns the values of this run array.
+    ///
+    /// Any logical slicing of this [`RunArray`] is not applied to the returned
+    /// values. Use [`Self::values_slice`] to account for slicing.
+    fn values(&self) -> &ArrayRef;
+
+    /// Returns the values that are part of the logical slice of this array.
+    fn values_slice(&self) -> ArrayRef;
+
+    /// Returns the physical index corresponding to the provided logical index.
+    ///
+    /// The result is arbitrary if `logical_index >= self.len()`.
+    fn get_physical_index(&self, logical_index: usize) -> usize;
+
+    /// Returns the physical indices corresponding to the provided logical indices.
+    fn get_physical_indices(&self, logical_indices: &[usize]) -> Vec<usize> {
+        logical_indices
+            .iter()
+            .map(|&idx| self.get_physical_index(idx))
+            .collect()
+    }
+
+    /// Create a new [`RunArray`] replacing `values` with the new values.
+    fn with_values(&self, values: ArrayRef) -> ArrayRef;
+}
+
+impl<R: RunEndIndexType> AnyRunArray for RunArray<R> {
+    fn run_ends(&self) -> ArrayRef {
+        Arc::new(PrimitiveArray::<R>::new(
+            RunArray::run_ends(self).inner().clone(),
+            None,
+        ))
+    }
+
+    fn sliced_run_ends(&self) -> ArrayRef {
+        Arc::new(PrimitiveArray::<R>::new(
+            RunArray::run_ends(self)
+                .sliced_values()
+                .collect::<Vec<_>>()
+                .into(),
+            None,
+        ))
+    }
+
+    fn values(&self) -> &ArrayRef {
+        RunArray::values(self)
+    }
+
+    fn values_slice(&self) -> ArrayRef {
+        RunArray::values_slice(self)
+    }
+
+    fn get_physical_index(&self, logical_index: usize) -> usize {
+        RunArray::get_physical_index(self, logical_index)
+    }
+
+    fn with_values(&self, values: ArrayRef) -> ArrayRef {
+        assert!(values.len() >= RunArray::values(self).len());
+
+        let data_type = DataType::RunEndEncoded(
+            Arc::new(Field::new("run_ends", R::DATA_TYPE, false)),
+            Arc::new(Field::new("values", values.data_type().clone(), true)),
+        );
+
+        Arc::new(unsafe {
+            RunArray::<R>::new_unchecked(data_type, RunArray::run_ends(self).clone(), values)
+        })
+    }
+}
+
 /// A [`RunArray`] typed typed on its child values array
 ///
 /// Implements [`ArrayAccessor`] and [`IntoIterator`] allowing fast access to its elements
