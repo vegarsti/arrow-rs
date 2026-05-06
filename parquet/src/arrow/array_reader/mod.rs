@@ -46,6 +46,7 @@ mod primitive_array;
 mod row_group_cache;
 mod row_group_index;
 mod row_number;
+mod run_end_encoded_array;
 mod struct_array;
 
 #[cfg(test)]
@@ -67,6 +68,7 @@ pub use map_array::MapArrayReader;
 pub use null_array::NullArrayReader;
 pub use primitive_array::PrimitiveArrayReader;
 pub use row_group_cache::RowGroupCache;
+pub use run_end_encoded_array::RunEndEncodedArrayReader;
 pub use struct_array::StructArrayReader;
 
 /// Reads Parquet data into Arrow Arrays.

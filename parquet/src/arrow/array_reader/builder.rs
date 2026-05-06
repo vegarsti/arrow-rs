@@ -30,7 +30,7 @@ use crate::arrow::array_reader::row_group_index::RowGroupIndexReader;
 use crate::arrow::array_reader::row_number::RowNumberReader;
 use crate::arrow::array_reader::{
     ArrayReader, FixedSizeListArrayReader, ListArrayReader, ListViewArrayReader, MapArrayReader,
-    NullArrayReader, PrimitiveArrayReader, RowGroups, StructArrayReader,
+    NullArrayReader, PrimitiveArrayReader, RowGroups, RunEndEncodedArrayReader, StructArrayReader,
     make_byte_array_dictionary_reader, make_byte_array_reader,
 };
 use crate::arrow::arrow_reader::DEFAULT_BATCH_SIZE;
@@ -420,7 +420,14 @@ impl<'a> ArrayReaderBuilder<'a> {
         ));
 
         let page_iterator = self.row_groups.column_chunks(col_idx)?;
-        let arrow_type = Some(field.arrow_type.clone());
+        let run_end_encoded_type = match &field.arrow_type {
+            DataType::RunEndEncoded(_, _) => Some(field.arrow_type.clone()),
+            _ => None,
+        };
+        let arrow_type = Some(match &field.arrow_type {
+            DataType::RunEndEncoded(_, value_field) => value_field.data_type().clone(),
+            _ => field.arrow_type.clone(),
+        });
 
         // LogicalType::Unknown maps to DataType::Null. In the past it has been assumed
         // that only INT32 can have this annotation, but this is not required by the Parquet
@@ -505,6 +512,12 @@ impl<'a> ArrayReaderBuilder<'a> {
                 )?,
             },
         };
+
+        let reader = match run_end_encoded_type {
+            Some(data_type) => Box::new(RunEndEncodedArrayReader::new(data_type, reader)) as _,
+            None => reader,
+        };
+
         Ok(Some(reader))
     }
 
