@@ -63,7 +63,7 @@ macro_rules! downcast_dict_op {
     };
 }
 
-macro_rules! downcast_ree_impl {  
+macro_rules! downcast_ree_impl {
     ($array:ident, $key:ident, $val:ident, $op:expr $(, $arg:expr)*) => {{
         $op($array
             .as_any()
@@ -120,11 +120,11 @@ macro_rules! downcast_op {
                 DataType::Utf8 => downcast_ree_op!(run_end, StringArray, $array, $op$(, $arg)*),
                 DataType::LargeUtf8 => {
                     downcast_ree_op!(run_end, LargeStringArray, $array, $op$(, $arg)*)
-                } 
-                DataType::Utf8View => { 
+                }
+                DataType::Utf8View => {
                     downcast_ree_op!(run_end, StringViewArray, $array, $op$(, $arg)*)
                 }
-                DataType::Binary => downcast_ree_op!(run_end, BinaryArray, $array, $op$(, $arg)*), 
+                DataType::Binary => downcast_ree_op!(run_end, BinaryArray, $array, $op$(, $arg)*),
                 DataType::BinaryView => {
                     downcast_ree_op!(run_end, BinaryViewArray, $array, $op$(, $arg)*)
                 }

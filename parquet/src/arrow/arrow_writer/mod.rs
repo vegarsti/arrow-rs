@@ -28,7 +28,7 @@ use std::vec::IntoIter;
 
 use arrow_array::cast::AsArray;
 use arrow_array::types::*;
-use arrow_array::{ArrayRef, Int32Array, RecordBatch, RecordBatchWriter};
+use arrow_array::{Array, ArrayRef, Int32Array, RecordBatch, RecordBatchWriter, UInt64Array};
 use arrow_schema::{
     ArrowError, DataType as ArrowDataType, Field, IntervalUnit, SchemaRef, TimeUnit,
 };
@@ -946,13 +946,9 @@ impl ArrowColumnWriter {
         match &mut self.writer {
             ArrowColumnWriterImpl::Column(c) => {
                 let leaf = levels.array();
-                match leaf.as_any_dictionary_opt() {
-                    Some(dictionary) => {
-                        let materialized =
-                            arrow_select::take::take(dictionary.values(), dictionary.keys(), None)?;
-                        write_leaf(c, &materialized, levels)?
-                    }
-                    None => write_leaf(c, leaf, levels)?,
+                match materialize_encoded_array(leaf.as_ref())? {
+                    Some(materialized) => write_leaf(c, &materialized, levels)?,
+                    None => write_leaf(c, leaf.as_ref(), levels)?,
                 };
             }
             ArrowColumnWriterImpl::ByteArray(c) => {
@@ -1302,6 +1298,27 @@ impl ArrowColumnWriterFactory {
         }
         Ok(())
     }
+}
+
+fn materialize_encoded_array(array: &dyn Array) -> Result<Option<ArrayRef>> {
+    if let Some(dictionary) = array.as_any_dictionary_opt() {
+        let materialized = arrow_select::take::take(dictionary.values(), dictionary.keys(), None)?;
+        return Ok(Some(
+            materialize_encoded_array(materialized.as_ref())?.unwrap_or(materialized),
+        ));
+    }
+
+    if let Some(run) = array.as_any_run_opt() {
+        let indices = UInt64Array::from_iter_values(
+            (0..run.len()).map(|logical_index| run.get_physical_index(logical_index) as u64),
+        );
+        let materialized = arrow_select::take::take(run.values().as_ref(), &indices, None)?;
+        return Ok(Some(
+            materialize_encoded_array(materialized.as_ref())?.unwrap_or(materialized),
+        ));
+    }
+
+    Ok(None)
 }
 
 fn write_leaf(

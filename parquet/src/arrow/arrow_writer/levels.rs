@@ -176,6 +176,10 @@ impl LevelInfoBuilder {
                 let levels = ArrayLevels::new(parent_ctx, is_nullable, array.clone());
                 Ok(Self::Primitive(levels))
             }
+            DataType::RunEndEncoded(_, v) if is_leaf(v.data_type()) => {
+                let levels = ArrayLevels::new(parent_ctx, is_nullable, array.clone());
+                Ok(Self::Primitive(levels))
+            }
             DataType::Struct(children) => {
                 let array = array.as_struct();
                 let def_level = match is_nullable {
@@ -728,13 +732,24 @@ impl LevelInfoBuilder {
             return true;
         }
 
-        // get the values out of the dictionaries
+        // get the values out of the dictionaries and run-end encoded arrays
         let (a, b) = match (a, b) {
             (DataType::Dictionary(_, va), DataType::Dictionary(_, vb)) => {
                 (va.as_ref(), vb.as_ref())
             }
+            (DataType::RunEndEncoded(_, va), DataType::RunEndEncoded(_, vb)) => {
+                (va.data_type(), vb.data_type())
+            }
+            (DataType::Dictionary(_, v), DataType::RunEndEncoded(_, vb)) => {
+                (v.as_ref(), vb.data_type())
+            }
+            (DataType::RunEndEncoded(_, va), DataType::Dictionary(_, v)) => {
+                (va.data_type(), v.as_ref())
+            }
             (DataType::Dictionary(_, v), b) => (v.as_ref(), b),
             (a, DataType::Dictionary(_, v)) => (a, v.as_ref()),
+            (DataType::RunEndEncoded(_, v), b) => (v.data_type(), b),
+            (a, DataType::RunEndEncoded(_, v)) => (a, v.data_type()),
             _ => (a, b),
         };
 
